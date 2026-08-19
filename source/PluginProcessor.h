@@ -103,7 +103,9 @@ public:
     juce::AudioParameterBool* overdriveParam = nullptr;
 
     // WayloUD-Chorus, chained in as an extra effect after the piano engine.
-    juce::AudioParameterFloat* chorusDryParam = nullptr;
+    // No Dry control: unlike a guitar-pedal effect blending an external
+    // input, this is in series after the piano with nothing else to
+    // preserve - dry is always full, so there's only a Wet/amount to set.
     juce::AudioParameterFloat* chorusWetParam = nullptr;
 
     // WayloDelay (three independent Left/Mid/Right taps), chained in last.
@@ -112,7 +114,6 @@ public:
     juce::AudioParameterFloat* extraDelayTimeRightParam = nullptr;
     juce::AudioParameterFloat* extraDelayFeedbackParam = nullptr;
     juce::AudioParameterFloat* extraDelayWetParam = nullptr;
-    juce::AudioParameterFloat* extraDelayDryParam = nullptr;
 
     juce::MidiKeyboardState keyboardState;
 

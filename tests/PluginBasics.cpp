@@ -78,9 +78,7 @@ TEST_CASE ("CC1 (mod wheel) audibly brightens the tone", "[dsp]")
         // Rhodes patch instead so the effect shows up on the channel this
         // test measures. Also isolate from Chorus/Delay2's default wet mix.
         *plugin->patchParam = (int) WayloPianoAudioProcessor::Patch::Rhodes1;
-        *plugin->chorusDryParam = 1.0f;
         *plugin->chorusWetParam = 0.0f;
-        *plugin->extraDelayDryParam = 1.0f;
         *plugin->extraDelayWetParam = 0.0f;
 
         juce::AudioBuffer<float> buffer (2, 512);
@@ -120,9 +118,7 @@ TEST_CASE ("Tremolo Pan knob introduces left/right amplitude modulation", "[dsp]
         // their own stereo processes and would otherwise swamp the
         // tremolo-specific L/R divergence this test measures.
         *plugin->patchParam = (int) WayloPianoAudioProcessor::Patch::Rhodes1;
-        *plugin->chorusDryParam = 1.0f;
         *plugin->chorusWetParam = 0.0f;
-        *plugin->extraDelayDryParam = 1.0f;
         *plugin->extraDelayWetParam = 0.0f;
 
         juce::AudioBuffer<float> buffer (2, 512);
@@ -155,9 +151,7 @@ TEST_CASE ("Extra Chorus and Delay2 effects are in the signal path", "[dsp]")
     {
         auto plugin = std::make_unique<WayloPianoAudioProcessor>();
         plugin->prepareToPlay (48000.0, 512);
-        *plugin->chorusDryParam = 1.0f;
         *plugin->chorusWetParam = chorusWet;
-        *plugin->extraDelayDryParam = 1.0f;
         *plugin->extraDelayWetParam = delayWet;
         *plugin->extraDelayFeedbackParam = 0.6f;
 
@@ -188,4 +182,44 @@ TEST_CASE ("Extra Chorus and Delay2 effects are in the signal path", "[dsp]")
     const float tailBypassed = renderTail (0.0f, 0.0f);
 
     CHECK (tailWithEffects > tailBypassed);
+}
+
+TEST_CASE ("Output never exceeds unity, even with dense sustained playing and effects maxed", "[dsp]")
+{
+    // Up to 32 mda ePiano voices sum with no per-voice gain compensation
+    // (matches the firmware), then feed two effects that each add wet on
+    // top of undiminished dry - worst case (a full chord held with the
+    // sustain pedal down and both extra effects at max) can genuinely push
+    // well past 0dBFS without an output safety limiter.
+    auto plugin = std::make_unique<WayloPianoAudioProcessor>();
+    plugin->prepareToPlay (48000.0, 512);
+    *plugin->chorusWetParam = 1.0f;
+    *plugin->extraDelayWetParam = 1.0f;
+    *plugin->extraDelayFeedbackParam = 0.95f;
+    *plugin->nativeDelayParam = 1.0f;
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::controllerEvent (1, 64, 127), 0); // sustain pedal down
+    for (int note = 36; note <= 96; note += 3) // a wide, dense chord
+        midi.addEvent (juce::MidiMessage::noteOn (1, note, (juce::uint8) 127), 0);
+    plugin->processBlock (buffer, midi);
+    midi.clear();
+
+    float peak = 0.0f;
+    for (int b = 0; b < 30; ++b)
+    {
+        plugin->processBlock (buffer, midi);
+        for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+        {
+            auto* data = buffer.getReadPointer (ch);
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+            {
+                REQUIRE (std::isfinite (data[i]));
+                peak = std::max (peak, std::abs (data[i]));
+            }
+        }
+    }
+
+    CHECK (peak <= 1.0f);
 }

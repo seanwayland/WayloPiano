@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include <cmath>
 
 //==============================================================================
 void WayloPianoAudioProcessor::NativeTripleDelay::init (float sampleRate)
@@ -62,9 +63,6 @@ WayloPianoAudioProcessor::WayloPianoAudioProcessor()
 
     addParameter (overdriveParam = new juce::AudioParameterBool ("overdrive", "Overdrive", false));
 
-    // WayloUD-Chorus's own out-of-the-box defaults.
-    addParameter (chorusDryParam = new juce::AudioParameterFloat (
-        "chorusDry", "Chorus Dry", juce::NormalisableRange<float> (0.0f, 1.0f), 0.29f));
     addParameter (chorusWetParam = new juce::AudioParameterFloat (
         "chorusWet", "Chorus Wet", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
 
@@ -79,8 +77,6 @@ WayloPianoAudioProcessor::WayloPianoAudioProcessor()
         "extraDelayFeedback", "Delay 2 Feedback", juce::NormalisableRange<float> (0.0f, 0.95f), 0.3f));
     addParameter (extraDelayWetParam = new juce::AudioParameterFloat (
         "extraDelayWet", "Delay 2 Wet", juce::NormalisableRange<float> (0.0f, 1.0f), 0.35f));
-    addParameter (extraDelayDryParam = new juce::AudioParameterFloat (
-        "extraDelayDry", "Delay 2 Dry", juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f));
 }
 
 WayloPianoAudioProcessor::~WayloPianoAudioProcessor()
@@ -155,8 +151,10 @@ void WayloPianoAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     // (ChorusEngine divides by it every sample), producing NaN throughout.
     chorusEngine.setRateAndBufferSizeDetails (sampleRate, samplesPerBlock);
     chorusEngine.prepareToPlay (sampleRate, samplesPerBlock);
+    chorusEngine.setDryGain (1.0f); // always full dry - see chorusWetParam's declaration comment
     delayEngine.setRateAndBufferSizeDetails (sampleRate, samplesPerBlock);
     delayEngine.prepareToPlay (sampleRate, samplesPerBlock);
+    *delayEngine.dryParam = 1.0f; // always full dry - see extraDelayWetParam's declaration comment
 
     keyboardState.reset();
 }
@@ -300,7 +298,6 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // Extra effects chain: WayloUD-Chorus, then WayloDelay, both reused
     // verbatim as headless internal processors - drive their own public
     // parameters directly from our knobs, then run their processBlock().
-    chorusEngine.setDryGain (chorusDryParam->get());
     chorusEngine.setWetGain (chorusWetParam->get());
     juce::MidiBuffer emptyMidi;
     chorusEngine.processBlock (buffer, emptyMidi);
@@ -310,12 +307,24 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     *delayEngine.delayTimeRightParam = extraDelayTimeRightParam->get();
     *delayEngine.feedbackParam = extraDelayFeedbackParam->get();
     *delayEngine.wetParam = extraDelayWetParam->get();
-    *delayEngine.dryParam = extraDelayDryParam->get();
     emptyMidi.clear();
     delayEngine.processBlock (buffer, emptyMidi);
 
     const float outputGain = outputGainParam->get();
     buffer.applyGain (outputGain);
+
+    // Safety limiter: up to 32 stacked mda ePiano voices (no per-voice gain
+    // compensation, matching the firmware) feeding two effects that each
+    // add wet on top of undiminished dry (Chorus, Delay2 - matching their
+    // own source plugins' mixing) can genuinely sum well past 0dBFS with
+    // dense/sustained playing. A soft tanh ceiling keeps that from ever
+    // becoming raw, uncontrolled digital overflow.
+    for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+    {
+        auto* data = buffer.getWritePointer (ch);
+        for (int n = 0; n < buffer.getNumSamples(); ++n)
+            data[n] = std::tanh (data[n]);
+    }
 }
 
 //==============================================================================
@@ -354,14 +363,12 @@ void WayloPianoAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     xml.setAttribute ("tone", (double) toneParam->get());
     xml.setAttribute ("tremoloPan", (double) tremoloPanParam->get());
     xml.setAttribute ("overdrive", overdriveParam->get());
-    xml.setAttribute ("chorusDry", (double) chorusDryParam->get());
     xml.setAttribute ("chorusWet", (double) chorusWetParam->get());
     xml.setAttribute ("extraDelayTimeLeft", (double) extraDelayTimeLeftParam->get());
     xml.setAttribute ("extraDelayTimeMid", (double) extraDelayTimeMidParam->get());
     xml.setAttribute ("extraDelayTimeRight", (double) extraDelayTimeRightParam->get());
     xml.setAttribute ("extraDelayFeedback", (double) extraDelayFeedbackParam->get());
     xml.setAttribute ("extraDelayWet", (double) extraDelayWetParam->get());
-    xml.setAttribute ("extraDelayDry", (double) extraDelayDryParam->get());
     copyXmlToBinary (xml, destData);
 }
 
@@ -377,14 +384,12 @@ void WayloPianoAudioProcessor::setStateInformation (const void* data, int sizeIn
     *toneParam = (float) xml->getDoubleAttribute ("tone", toneParam->get());
     *tremoloPanParam = (float) xml->getDoubleAttribute ("tremoloPan", tremoloPanParam->get());
     *overdriveParam = xml->getBoolAttribute ("overdrive", overdriveParam->get());
-    *chorusDryParam = (float) xml->getDoubleAttribute ("chorusDry", chorusDryParam->get());
     *chorusWetParam = (float) xml->getDoubleAttribute ("chorusWet", chorusWetParam->get());
     *extraDelayTimeLeftParam = (float) xml->getDoubleAttribute ("extraDelayTimeLeft", extraDelayTimeLeftParam->get());
     *extraDelayTimeMidParam = (float) xml->getDoubleAttribute ("extraDelayTimeMid", extraDelayTimeMidParam->get());
     *extraDelayTimeRightParam = (float) xml->getDoubleAttribute ("extraDelayTimeRight", extraDelayTimeRightParam->get());
     *extraDelayFeedbackParam = (float) xml->getDoubleAttribute ("extraDelayFeedback", extraDelayFeedbackParam->get());
     *extraDelayWetParam = (float) xml->getDoubleAttribute ("extraDelayWet", extraDelayWetParam->get());
-    *extraDelayDryParam = (float) xml->getDoubleAttribute ("extraDelayDry", extraDelayDryParam->get());
 }
 
 //==============================================================================

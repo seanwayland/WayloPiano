@@ -32,20 +32,18 @@ WayloPianoAudioProcessorEditor::WayloPianoAudioProcessorEditor (WayloPianoAudioP
     setupKnob (i++, *audioProcessor.nativeDelayParam, "Delay");
     setupKnob (i++, *audioProcessor.toneParam, "Tone");
     setupKnob (i++, *audioProcessor.tremoloPanParam, "Tremolo Pan");
-    setupKnob (i++, *audioProcessor.chorusDryParam, "Chorus Dry");
     setupKnob (i++, *audioProcessor.chorusWetParam, "Chorus Wet");
     setupKnob (i++, *audioProcessor.extraDelayTimeLeftParam, "Delay2 Time L");
     setupKnob (i++, *audioProcessor.extraDelayTimeMidParam, "Delay2 Time M");
     setupKnob (i++, *audioProcessor.extraDelayTimeRightParam, "Delay2 Time R");
     setupKnob (i++, *audioProcessor.extraDelayFeedbackParam, "Delay2 Feedback");
     setupKnob (i++, *audioProcessor.extraDelayWetParam, "Delay2 Wet");
-    setupKnob (i++, *audioProcessor.extraDelayDryParam, "Delay2 Dry");
     jassert (i == kNumKnobs);
 
     addAndMakeVisible (keyboardComponent);
     keyboardComponent.setAvailableRange (24, 96);
 
-    setSize (975, 660);
+    setSize (975, 545);
 }
 
 WayloPianoAudioProcessorEditor::~WayloPianoAudioProcessorEditor()
@@ -112,7 +110,7 @@ void WayloPianoAudioProcessorEditor::resized()
 
     area.removeFromTop (11);
 
-    constexpr int kCols = 4;
+    constexpr int kCols = 5;
     constexpr int kRows = (kNumKnobs + kCols - 1) / kCols;
     constexpr int kCellHeight = 120;
     const int knobAreaHeight = kCellHeight * kRows;
