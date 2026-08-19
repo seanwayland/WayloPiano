@@ -9,7 +9,7 @@ TEST_CASE ("Boot performance")
     BENCHMARK_ADVANCED ("Editor open and close")
     (Catch::Benchmark::Chronometer meter)
     {
-        auto plugin = std::make_unique<NatorsynthAudioProcessor>();
+        auto plugin = std::make_unique<WayloPianoAudioProcessor>();
 
         // due to complex construction logic of the editor, let's measure open/close together
         meter.measure ([&] (int /* i */) {
