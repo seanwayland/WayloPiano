@@ -224,7 +224,7 @@ TEST_CASE ("Output never exceeds unity, even with dense sustained playing and ef
     CHECK (peak <= 1.0f);
 }
 
-TEST_CASE ("Dual FM patch's left and right channels diverge (different modulator ratios)", "[dsp]")
+TEST_CASE ("Dual FM patch's left and right channels diverge (different modulation index)", "[dsp]")
 {
     auto plugin = std::make_unique<WayloPianoAudioProcessor>();
     plugin->prepareToPlay (48000.0, 512);

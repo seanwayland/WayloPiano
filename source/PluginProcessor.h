@@ -16,14 +16,17 @@
     wavetable in ep_wavedata.cpp) so it should sound identical at the
     default settings.
 
-    Patch select cycles the same 7 patches the hardware's encoder does:
-    "FM Layer" (Rhodes + FM piano, hard-panned), "Dual Rhodes" (two
-    slightly-detuned Rhodes voices panned wide), then the 5 mda ePiano
-    factory presets. The mod wheel drives the same big timbral sweep the
-    firmware's mod wheel does (Hardness/Muffle/Treble on the Rhodes engine,
-    Brightness on the FM voice) - no vibrato. A dedicated Tremolo Pan knob
-    drives the firmware's pan-tremolo LFO directly (0 = off, turning it up
-    makes it both faster and deeper at once).
+    Patch select cycles 6 patches: "FM Layer" and "Dual Rhodes" (firmware
+    order, hard-panned Rhodes+FM and two distinct Rhodes presets panned
+    wide), "Dual FM" (new - two FM piano voices hard-panned left/right,
+    same modulator:carrier ratio but a higher modulation-index scale and a
+    snappier attack on the right voice, for a related but distinct
+    timbre), then 3 of the firmware's 5 mda ePiano factory presets. The mod
+    wheel drives the same big timbral sweep the firmware's mod wheel does
+    (Hardness/Muffle/Treble on the Rhodes engine, Brightness on the FM
+    voice) - no vibrato. A dedicated Tremolo Pan knob drives the firmware's
+    pan-tremolo LFO directly (0 = off, turning it up makes it both faster
+    and deeper at once).
 
     On top of the firmware's own built-in triple-tap delay (the "Delay"
     knob, matching hardware exactly), this also chains in the WayloUD-Chorus
@@ -128,16 +131,25 @@ private:
     static constexpr float kFmPanL = 1.0f, kFmPanR = 0.0f;
     static constexpr float kDual1PanL = 1.0f, kDual1PanR = 0.0f;
     static constexpr float kDual2PanL = 0.0f, kDual2PanR = 1.0f;
-    static constexpr float kDualTuneOffset = 0.04f;
     static constexpr int kFmLayerRhodesPreset = 2;
-    static constexpr int kDualRhodesPreset = 2;
+    // Two distinct mda ePiano presets, neither using overdrive (standard
+    // vs. soft/mellow with no treble), hard-panned left/right - no detune,
+    // no overdrive, just two genuinely different Rhodes timbres.
+    static constexpr int kDualRhodesLeftPreset = 0;
+    static constexpr int kDualRhodesRightPreset = 2;
     static constexpr float kMasterVolume = 0.35f; // firmware's fixed internal level; outputGainParam multiplies on top
 
-    // Dual FM patch: right voice's modulator runs at 1.02x the carrier
-    // frequency instead of exactly 1:1 - close enough to stay clearly the
-    // same "related" FM piano character as the left voice, but far enough
-    // to slowly phase against it for a distinct, evolving timbre.
-    static constexpr float kDualFmRightModRatio = 1.02f;
+    // Dual FM patch: same modulator:carrier ratio on both voices (no
+    // beating risk at all, since fundamental and overtone spacing are
+    // identical) - the right voice just runs with more modulation index,
+    // giving it a brighter, more complex-but-related version of the same
+    // FM piano character as the left voice.
+    static constexpr float kDualFmRightModIndexScale = 1.6f;
+
+    // Dual FM's attack is snappier/more percussive than FM Layer's FM
+    // voice, which keeps the original 8ms default.
+    static constexpr float kFmLayerAttackSeconds = 0.008f;
+    static constexpr float kDualFmAttackSeconds = 0.002f;
 
     MdaEPiano piano, piano2;
     FmPiano fmPiano, fmPiano2;

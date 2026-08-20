@@ -99,9 +99,8 @@ void WayloPianoAudioProcessor::setPatch (Patch newPatch)
     }
     else if ((Patch) p == Patch::DualRhodes)
     {
-        piano.LoadProgram (kDualRhodesPreset);
-        piano2.LoadProgram (kDualRhodesPreset);
-        piano2.SetParam (MdaEPiano::kTune, 0.5f + kDualTuneOffset);
+        piano.LoadProgram (kDualRhodesLeftPreset);
+        piano2.LoadProgram (kDualRhodesRightPreset);
     }
     else if ((Patch) p == Patch::DualFm)
     {
@@ -160,7 +159,7 @@ void WayloPianoAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     piano2.Init ((float) sampleRate);
     fmPiano.Init ((float) sampleRate);
     fmPiano2.Init ((float) sampleRate);
-    fmPiano2.SetModRatio (kDualFmRightModRatio);
+    fmPiano2.SetModIndexScale (kDualFmRightModIndexScale);
     nativeDelay.init ((float) sampleRate);
     setPatch (Patch::FmLayer);
 
@@ -199,6 +198,13 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     nativeDelay.setAmount (nativeDelayParam->get());
     fmPiano.SetDecay (toneParam->get());
     fmPiano2.SetDecay (toneParam->get());
+
+    // Dual FM gets a snappier, more percussive attack than FM Layer's FM
+    // voice - both fmPiano/fmPiano2 share this since only one of the two
+    // patches is ever actually audible at a time.
+    const bool isDualFmPatch = (patchParam->getIndex() == (int) Patch::DualFm);
+    fmPiano.SetAttackTime (isDualFmPatch ? kDualFmAttackSeconds : kFmLayerAttackSeconds);
+    fmPiano2.SetAttackTime (isDualFmPatch ? kDualFmAttackSeconds : kFmLayerAttackSeconds);
 
     const float hardness = std::pow (modWheel, 0.2f);
     piano.SetParam (MdaEPiano::kHardness, hardness);

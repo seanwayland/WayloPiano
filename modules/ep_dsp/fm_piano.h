@@ -33,10 +33,17 @@ class FmPiano
     void SetBrightness(float value01) { modIndexBase_ = 0.15f + 2.5f * value01; }
     void SetDecay(float value01) { ampDecaySeconds_ = 0.6f + 3.0f * value01; }
 
-    // Modulator:carrier frequency ratio, default 1.0 (unison - matches the
-    // original single-voice behaviour exactly). Applied to newly-triggered
-    // notes; lets two instances sound like a related but distinct timbre.
-    void SetModRatio(float ratio) { modRatio_ = ratio; }
+    // Attack ramp time in seconds, default 0.008 (8ms) matching the
+    // original fixed value. Applied to newly-triggered notes.
+    void SetAttackTime(float seconds) { attackSeconds_ = seconds; }
+
+    // Multiplies the modulation index on top of Brightness, default 1.0
+    // (matches the original single-voice behaviour exactly). Two instances
+    // at the same modulator:carrier ratio but different scales still sound
+    // like the same related FM piano character, just with more or less
+    // harmonic complexity - no beating, since the fundamental and modulator
+    // ratio are identical between them.
+    void SetModIndexScale(float scale) { modIndexScale_ = scale; }
 
     // semitones in [-N, +N]; applied live to all voices' pitch.
     void SetPitchBend(float semitones)
@@ -70,20 +77,20 @@ class FmPiano
         Voice &v      = voice_[vi];
         v.note        = note;
         v.carrierInc  = 2.0f * (float)M_PI * freq * iFs_;
-        v.modInc      = v.carrierInc * modRatio_;
+        v.modInc      = v.carrierInc; // 1:1 ratio, modulator tracks carrier pitch
         v.carrierPhase = 0.0f;
         v.modPhase     = 0.0f;
         v.ampTarget    = velocity / 127.0f;
         v.ampEnv       = 0.0f;
         v.attacking    = true;
-        v.attackInc    = v.ampTarget / (kAttackSeconds * Fs_);
+        v.attackInc    = v.ampTarget / (attackSeconds_ * Fs_);
         v.ampDecay     = std::exp(-iFs_ / ampDecaySeconds_);
 
         // Slightly more FM modulation for lower notes and harder velocity,
         // layered on top of the brightness-driven base index.
         float pitchFactor    = 1.0f + 0.012f * (69.0f - (float)note);
         float velocityFactor = 1.0f + 0.006f * ((float)velocity - 64.0f);
-        float modIndex        = modIndexBase_ * pitchFactor * velocityFactor;
+        float modIndex        = modIndexBase_ * modIndexScale_ * pitchFactor * velocityFactor;
         if(modIndex < 0.05f)
             modIndex = 0.05f;
         if(modIndex > 6.0f)
@@ -167,7 +174,7 @@ class FmPiano
         bool  releasing     = false;
     };
 
-    static constexpr float kAttackSeconds = 0.008f; // 8ms attack ramp
+    float attackSeconds_ = 0.008f; // 8ms attack ramp, default
 
     float Fs_  = 48000.0f;
     float iFs_ = 1.0f / 48000.0f;
@@ -176,7 +183,7 @@ class FmPiano
     int   activeVoices_ = 0;
 
     float modIndexBase_    = 0.6f;
-    float modRatio_        = 1.0f;
+    float modIndexScale_   = 1.0f;
     float ampDecaySeconds_ = 2.0f;
     float pitchBendRatio_  = 1.0f;
 };
