@@ -223,3 +223,30 @@ TEST_CASE ("Output never exceeds unity, even with dense sustained playing and ef
 
     CHECK (peak <= 1.0f);
 }
+
+TEST_CASE ("Dual FM patch's left and right channels diverge (different modulator ratios)", "[dsp]")
+{
+    auto plugin = std::make_unique<WayloPianoAudioProcessor>();
+    plugin->prepareToPlay (48000.0, 512);
+    *plugin->patchParam = (int) WayloPianoAudioProcessor::Patch::DualFm;
+    *plugin->chorusWetParam = 0.0f;
+    *plugin->extraDelayWetParam = 0.0f;
+
+    juce::AudioBuffer<float> buffer (2, 512);
+    juce::MidiBuffer midi;
+    midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+    plugin->processBlock (buffer, midi);
+    midi.clear();
+
+    float maxDivergence = 0.0f;
+    for (int b = 0; b < 20; ++b)
+    {
+        plugin->processBlock (buffer, midi);
+        auto* l = buffer.getReadPointer (0);
+        auto* r = buffer.getReadPointer (1);
+        for (int i = 0; i < buffer.getNumSamples(); ++i)
+            maxDivergence = std::max (maxDivergence, std::abs (l[i] - r[i]));
+    }
+
+    CHECK (maxDivergence > 0.001f);
+}

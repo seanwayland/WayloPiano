@@ -46,7 +46,7 @@ void WayloPianoAudioProcessor::NativeTripleDelay::process (float inL, float inR,
 WayloPianoAudioProcessor::WayloPianoAudioProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
 {
-    auto patchChoices = juce::StringArray { "FM Layer", "Dual Rhodes", "Rhodes 1", "Rhodes 2", "Rhodes 3", "Rhodes 4", "Rhodes 5" };
+    auto patchChoices = juce::StringArray { "FM Layer", "Dual Rhodes", "Dual FM", "Rhodes 1", "Rhodes 2", "Rhodes 3" };
     addParameter (patchParam = new juce::AudioParameterChoice ("patch", "Patch", patchChoices, 0));
 
     addParameter (outputGainParam = new juce::AudioParameterFloat (
@@ -103,6 +103,11 @@ void WayloPianoAudioProcessor::setPatch (Patch newPatch)
         piano2.LoadProgram (kDualRhodesPreset);
         piano2.SetParam (MdaEPiano::kTune, 0.5f + kDualTuneOffset);
     }
+    else if ((Patch) p == Patch::DualFm)
+    {
+        // No Rhodes engine involved in this patch at all - purely two FM
+        // voices, hard-panned, see processBlock().
+    }
     else
     {
         piano.LoadProgram (p - (int) Patch::Rhodes1);
@@ -117,6 +122,12 @@ void WayloPianoAudioProcessor::handleNoteOn (int note, int velocity)
         handleNoteOff (note);
         return;
     }
+    if (patch == Patch::DualFm)
+    {
+        fmPiano.NoteOn (note, velocity);
+        fmPiano2.NoteOn (note, velocity);
+        return;
+    }
     piano.NoteOn (note, velocity);
     if (patch == Patch::FmLayer)
         fmPiano.NoteOn (note, velocity);
@@ -127,6 +138,12 @@ void WayloPianoAudioProcessor::handleNoteOn (int note, int velocity)
 void WayloPianoAudioProcessor::handleNoteOff (int note)
 {
     const auto patch = (Patch) patchParam->getIndex();
+    if (patch == Patch::DualFm)
+    {
+        fmPiano.NoteOff (note);
+        fmPiano2.NoteOff (note);
+        return;
+    }
     piano.NoteOff (note);
     if (patch == Patch::FmLayer)
         fmPiano.NoteOff (note);
@@ -142,6 +159,8 @@ void WayloPianoAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     piano.Init ((float) sampleRate);
     piano2.Init ((float) sampleRate);
     fmPiano.Init ((float) sampleRate);
+    fmPiano2.Init ((float) sampleRate);
+    fmPiano2.SetModRatio (kDualFmRightModRatio);
     nativeDelay.init ((float) sampleRate);
     setPatch (Patch::FmLayer);
 
@@ -179,6 +198,7 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // block (matches the pod's ~1kHz control-rate poll closely enough).
     nativeDelay.setAmount (nativeDelayParam->get());
     fmPiano.SetDecay (toneParam->get());
+    fmPiano2.SetDecay (toneParam->get());
 
     const float hardness = std::pow (modWheel, 0.2f);
     piano.SetParam (MdaEPiano::kHardness, hardness);
@@ -195,6 +215,7 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     piano2.SetParam (MdaEPiano::kTreble, modWheel);
 
     fmPiano.SetBrightness (modWheel * modWheel);
+    fmPiano2.SetBrightness (modWheel * modWheel);
 
     piano.SetParam (MdaEPiano::kOverdrive, overdriveParam->get() ? 0.5f : 0.0f);
 
@@ -209,6 +230,7 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto patch = (Patch) patchParam->getIndex();
     const bool fmLayerActive = (patch == Patch::FmLayer);
     const bool dualRhodesActive = (patch == Patch::DualRhodes);
+    const bool dualFmActive = (patch == Patch::DualFm);
 
     int samplePos = 0;
     for (const auto metadata : midiMessages)
@@ -233,6 +255,11 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 const float mono2 = 0.5f * (l2 + r2);
                 l = mono1 * kDual1PanL + mono2 * kDual2PanL;
                 r = mono1 * kDual1PanR + mono2 * kDual2PanR;
+            }
+            else if (dualFmActive)
+            {
+                l = fmPiano.Process();
+                r = fmPiano2.Process();
             }
 
             float wetL, wetR;
@@ -264,6 +291,7 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             piano.SetPitchBend (semitones);
             piano2.SetPitchBend (semitones);
             fmPiano.SetPitchBend (semitones);
+            fmPiano2.SetPitchBend (semitones);
         }
     }
 
@@ -286,6 +314,11 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             const float mono2 = 0.5f * (l2 + r2);
             l = mono1 * kDual1PanL + mono2 * kDual2PanL;
             r = mono1 * kDual1PanR + mono2 * kDual2PanR;
+        }
+        else if (dualFmActive)
+        {
+            l = fmPiano.Process();
+            r = fmPiano2.Process();
         }
 
         float wetL, wetR;

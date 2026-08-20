@@ -33,6 +33,11 @@ class FmPiano
     void SetBrightness(float value01) { modIndexBase_ = 0.15f + 2.5f * value01; }
     void SetDecay(float value01) { ampDecaySeconds_ = 0.6f + 3.0f * value01; }
 
+    // Modulator:carrier frequency ratio, default 1.0 (unison - matches the
+    // original single-voice behaviour exactly). Applied to newly-triggered
+    // notes; lets two instances sound like a related but distinct timbre.
+    void SetModRatio(float ratio) { modRatio_ = ratio; }
+
     // semitones in [-N, +N]; applied live to all voices' pitch.
     void SetPitchBend(float semitones)
     {
@@ -65,7 +70,7 @@ class FmPiano
         Voice &v      = voice_[vi];
         v.note        = note;
         v.carrierInc  = 2.0f * (float)M_PI * freq * iFs_;
-        v.modInc      = v.carrierInc; // 1:1 ratio, modulator tracks carrier pitch
+        v.modInc      = v.carrierInc * modRatio_;
         v.carrierPhase = 0.0f;
         v.modPhase     = 0.0f;
         v.ampTarget    = velocity / 127.0f;
@@ -171,6 +176,7 @@ class FmPiano
     int   activeVoices_ = 0;
 
     float modIndexBase_    = 0.6f;
+    float modRatio_        = 1.0f;
     float ampDecaySeconds_ = 2.0f;
     float pitchBendRatio_  = 1.0f;
 };

@@ -70,17 +70,17 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     //==============================================================================
-    // Patch order matches the firmware's encoder cycle exactly: 0 = FM
-    // Layer, 1 = Dual Rhodes, 2..6 = the 5 mda ePiano factory presets.
+    // 0 = FM Layer, 1 = Dual Rhodes (firmware order), 2 = Dual FM (new -
+    // not in the firmware), 3..5 = 3 of the firmware's 5 mda ePiano factory
+    // presets (Rhodes 4/5 dropped).
     enum class Patch
     {
         FmLayer = 0,
         DualRhodes,
+        DualFm,
         Rhodes1,
         Rhodes2,
         Rhodes3,
-        Rhodes4,
-        Rhodes5,
         kNumPatches
     };
     juce::AudioParameterChoice* patchParam = nullptr;
@@ -133,8 +133,14 @@ private:
     static constexpr int kDualRhodesPreset = 2;
     static constexpr float kMasterVolume = 0.35f; // firmware's fixed internal level; outputGainParam multiplies on top
 
+    // Dual FM patch: right voice's modulator runs at 1.02x the carrier
+    // frequency instead of exactly 1:1 - close enough to stay clearly the
+    // same "related" FM piano character as the left voice, but far enough
+    // to slowly phase against it for a distinct, evolving timbre.
+    static constexpr float kDualFmRightModRatio = 1.02f;
+
     MdaEPiano piano, piano2;
-    FmPiano fmPiano;
+    FmPiano fmPiano, fmPiano2;
     float modWheel = 0.0f; // 0..1, CC1
 
     void setPatch (Patch newPatch);
