@@ -94,10 +94,6 @@ public:
     // delay (0 = fully dry). Applied after everything else, same as hardware.
     juce::AudioParameterFloat* nativeDelayParam = nullptr;
 
-    // Firmware's Knob 2: Muffle (tone) base for the Rhodes engine, and FM
-    // decay time. Also feeds the mod-wheel-driven brightness sweep below.
-    juce::AudioParameterFloat* toneParam = nullptr;
-
     // Dedicated knob (not tied to Tone, unlike the firmware's Knob 2): pan
     // tremolo rate+depth together, 0 = completely off.
     juce::AudioParameterFloat* tremoloPanParam = nullptr;
@@ -126,11 +122,15 @@ private:
 
     static constexpr float kPitchBendRangeSemitones = 7.0f; // fixed, matches firmware
 
+    // Firmware's Knob 2 (Muffle/tone base + FM decay time): removed as a
+    // user-facing knob (had no perceptible effect), fixed at its old
+    // default instead. The mod-wheel-driven Muffle sweep this also fed
+    // into is unchanged.
+    static constexpr float kFixedTone = 0.5f;
+
     // Hard pan, matches firmware exactly.
     static constexpr float kRhodesPanL = 0.0f, kRhodesPanR = 1.0f;
     static constexpr float kFmPanL = 1.0f, kFmPanR = 0.0f;
-    static constexpr float kDual1PanL = 1.0f, kDual1PanR = 0.0f;
-    static constexpr float kDual2PanL = 0.0f, kDual2PanR = 1.0f;
     static constexpr int kFmLayerRhodesPreset = 2;
     // Two distinct mda ePiano presets, neither using overdrive (standard
     // vs. soft/mellow with no treble), hard-panned left/right - no detune,
@@ -154,6 +154,13 @@ private:
     MdaEPiano piano, piano2;
     FmPiano fmPiano, fmPiano2;
     float modWheel = 0.0f; // 0..1, CC1
+
+    // FmPiano has no tremolo of its own (unlike MdaEPiano's SetPanTremolo),
+    // so Dual FM gets a simple shared amplitude-modulation LFO here instead,
+    // matching Tremolo Pan's "0 = off, faster+deeper together" behaviour.
+    float dualFmTremoloPhase = 0.0f;
+    float dualFmTremoloDepth = 0.0f;
+    float dualFmTremoloIncrement = 0.0f;
 
     void setPatch (Patch newPatch);
     void handleNoteOn (int note, int velocity);

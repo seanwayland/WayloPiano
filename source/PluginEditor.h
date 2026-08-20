@@ -28,7 +28,7 @@ private:
 
     juce::ToggleButton overdriveButton;
 
-    static constexpr int kNumKnobs = 10;
+    static constexpr int kNumKnobs = 9;
     juce::Slider knobs[kNumKnobs];
     juce::Label knobLabels[kNumKnobs];
     juce::AudioParameterFloat* knobParams[kNumKnobs] {};

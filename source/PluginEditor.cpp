@@ -30,7 +30,6 @@ WayloPianoAudioProcessorEditor::WayloPianoAudioProcessorEditor (WayloPianoAudioP
     int i = 0;
     setupKnob (i++, *audioProcessor.outputGainParam, "Volume");
     setupKnob (i++, *audioProcessor.nativeDelayParam, "Delay");
-    setupKnob (i++, *audioProcessor.toneParam, "Tone");
     setupKnob (i++, *audioProcessor.tremoloPanParam, "Tremolo Pan");
     setupKnob (i++, *audioProcessor.chorusWetParam, "Chorus Wet");
     setupKnob (i++, *audioProcessor.extraDelayTimeLeftParam, "Delay2 Time L");

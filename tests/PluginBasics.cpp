@@ -250,3 +250,60 @@ TEST_CASE ("Dual FM patch's left and right channels diverge (different modulatio
 
     CHECK (maxDivergence > 0.001f);
 }
+
+TEST_CASE ("Tremolo Pan actually modulates Dual Rhodes and Dual FM over time (regression)", "[dsp]")
+{
+    // Both patches previously had tremolo doing nothing: Dual Rhodes
+    // averaged each voice's tremolo-modulated L/R together before hard
+    // panning (cancelling the modulation exactly), and FmPiano has no
+    // tremolo mechanism of its own for Dual FM at all. Hold a note with
+    // the sustain pedal so it reaches a steady level, then check the left
+    // channel's peak amplitude actually oscillates over time with tremolo
+    // on, vs. staying flat with it off.
+    auto measureEnvelopeRange = [] (WayloPianoAudioProcessor::Patch patch, float tremoloAmount) -> float
+    {
+        auto plugin = std::make_unique<WayloPianoAudioProcessor>();
+        plugin->prepareToPlay (48000.0, 512);
+        *plugin->patchParam = (int) patch;
+        *plugin->tremoloPanParam = tremoloAmount;
+        *plugin->chorusWetParam = 0.0f;
+        *plugin->extraDelayWetParam = 0.0f;
+
+        juce::AudioBuffer<float> buffer (2, 512);
+        juce::MidiBuffer midi;
+        midi.addEvent (juce::MidiMessage::controllerEvent (1, 64, 127), 0); // sustain pedal down
+        midi.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 0);
+        plugin->processBlock (buffer, midi);
+        midi.clear();
+
+        for (int b = 0; b < 10; ++b) // let attack/decay settle to steady state
+            plugin->processBlock (buffer, midi);
+
+        float minPeak = 1.0e9f, maxPeak = 0.0f;
+        for (int b = 0; b < 50; ++b)
+        {
+            plugin->processBlock (buffer, midi);
+            auto* l = buffer.getReadPointer (0);
+            float blockPeak = 0.0f;
+            for (int i = 0; i < buffer.getNumSamples(); ++i)
+                blockPeak = std::max (blockPeak, std::abs (l[i]));
+            minPeak = std::min (minPeak, blockPeak);
+            maxPeak = std::max (maxPeak, blockPeak);
+        }
+        return maxPeak - minPeak;
+    };
+
+    SECTION ("Dual Rhodes")
+    {
+        const float rangeOff = measureEnvelopeRange (WayloPianoAudioProcessor::Patch::DualRhodes, 0.0f);
+        const float rangeOn = measureEnvelopeRange (WayloPianoAudioProcessor::Patch::DualRhodes, 1.0f);
+        CHECK (rangeOn > rangeOff);
+    }
+
+    SECTION ("Dual FM")
+    {
+        const float rangeOff = measureEnvelopeRange (WayloPianoAudioProcessor::Patch::DualFm, 0.0f);
+        const float rangeOn = measureEnvelopeRange (WayloPianoAudioProcessor::Patch::DualFm, 1.0f);
+        CHECK (rangeOn > rangeOff);
+    }
+}

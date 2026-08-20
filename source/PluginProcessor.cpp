@@ -55,9 +55,6 @@ WayloPianoAudioProcessor::WayloPianoAudioProcessor()
     addParameter (nativeDelayParam = new juce::AudioParameterFloat (
         "nativeDelay", "Delay", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
-    addParameter (toneParam = new juce::AudioParameterFloat (
-        "tone", "Tone", juce::NormalisableRange<float> (0.0f, 1.0f), 0.5f));
-
     addParameter (tremoloPanParam = new juce::AudioParameterFloat (
         "tremoloPan", "Tremolo Pan", juce::NormalisableRange<float> (0.0f, 1.0f), 0.0f));
 
@@ -196,8 +193,8 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // Firmware's Controls(): re-derive every knob-driven parameter once per
     // block (matches the pod's ~1kHz control-rate poll closely enough).
     nativeDelay.setAmount (nativeDelayParam->get());
-    fmPiano.SetDecay (toneParam->get());
-    fmPiano2.SetDecay (toneParam->get());
+    fmPiano.SetDecay (kFixedTone);
+    fmPiano2.SetDecay (kFixedTone);
 
     // Dual FM gets a snappier, more percussive attack than FM Layer's FM
     // voice - both fmPiano/fmPiano2 share this since only one of the two
@@ -211,7 +208,7 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const float hardness2 = std::pow (modWheel, 0.5f);
     piano2.SetParam (MdaEPiano::kHardness, hardness2);
 
-    float muffle = toneParam->get() + modWheel * 0.9f;
+    float muffle = kFixedTone + modWheel * 0.9f;
     if (muffle > 1.0f)
         muffle = 1.0f;
     piano.SetParam (MdaEPiano::kMuffle, muffle);
@@ -229,6 +226,15 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // Recalculate(), which would otherwise clobber this).
     piano.SetPanTremolo (tremoloPanParam->get());
     piano2.SetPanTremolo (tremoloPanParam->get());
+
+    // Same depth/rate curve as MdaEPiano::SetPanTremolo() above, so Dual
+    // FM's tremolo feels consistent with the Rhodes patches' tremolo.
+    {
+        const float tremoloAmount = tremoloPanParam->get();
+        dualFmTremoloDepth = std::pow (tremoloAmount, 0.3f);
+        const float tremoloRateParam = 0.4f + 0.2f * tremoloAmount;
+        dualFmTremoloIncrement = 6.283f * (1.0f / (float) currentSampleRate) * std::exp (6.22f * tremoloRateParam - 2.61f);
+    }
 
     auto* outL = buffer.getWritePointer (0);
     auto* outR = buffer.getNumChannels() > 1 ? buffer.getWritePointer (1) : outL;
@@ -257,15 +263,24 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             {
                 float l2, r2;
                 piano2.Process (l2, r2);
-                const float mono1 = 0.5f * (l + r);
-                const float mono2 = 0.5f * (l2 + r2);
-                l = mono1 * kDual1PanL + mono2 * kDual2PanL;
-                r = mono1 * kDual1PanR + mono2 * kDual2PanR;
+                // Each voice's own tremolo LFO modulates its L vs R in
+                // opposite directions (see SetPanTremolo()) - averaging
+                // l+r together before hard-panning cancels that modulation
+                // exactly, which is why tremolo did nothing here. Take
+                // each hard-panned voice's own tremolo-modulated channel
+                // directly instead, so the modulation survives.
+                // l already holds piano's own L channel (carries piano's tremolo)
+                r = r2;  // piano2's own R channel (carries piano2's tremolo)
             }
             else if (dualFmActive)
             {
                 l = fmPiano.Process();
                 r = fmPiano2.Process();
+                l *= 1.0f + dualFmTremoloDepth * std::sin (dualFmTremoloPhase);
+                r *= 1.0f - dualFmTremoloDepth * std::sin (dualFmTremoloPhase);
+                dualFmTremoloPhase += dualFmTremoloIncrement;
+                if (dualFmTremoloPhase > juce::MathConstants<float>::twoPi)
+                    dualFmTremoloPhase -= juce::MathConstants<float>::twoPi;
             }
 
             float wetL, wetR;
@@ -316,15 +331,18 @@ void WayloPianoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         {
             float l2, r2;
             piano2.Process (l2, r2);
-            const float mono1 = 0.5f * (l + r);
-            const float mono2 = 0.5f * (l2 + r2);
-            l = mono1 * kDual1PanL + mono2 * kDual2PanL;
-            r = mono1 * kDual1PanR + mono2 * kDual2PanR;
+            // l already holds piano's own L channel (carries piano's tremolo)
+            r = r2; // piano2's own R channel (carries piano2's tremolo)
         }
         else if (dualFmActive)
         {
             l = fmPiano.Process();
             r = fmPiano2.Process();
+            l *= 1.0f + dualFmTremoloDepth * std::sin (dualFmTremoloPhase);
+            r *= 1.0f - dualFmTremoloDepth * std::sin (dualFmTremoloPhase);
+            dualFmTremoloPhase += dualFmTremoloIncrement;
+            if (dualFmTremoloPhase > juce::MathConstants<float>::twoPi)
+                dualFmTremoloPhase -= juce::MathConstants<float>::twoPi;
         }
 
         float wetL, wetR;
@@ -399,7 +417,6 @@ void WayloPianoAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     xml.setAttribute ("patch", patchParam->getIndex());
     xml.setAttribute ("outputGain", (double) outputGainParam->get());
     xml.setAttribute ("nativeDelay", (double) nativeDelayParam->get());
-    xml.setAttribute ("tone", (double) toneParam->get());
     xml.setAttribute ("tremoloPan", (double) tremoloPanParam->get());
     xml.setAttribute ("overdrive", overdriveParam->get());
     xml.setAttribute ("chorusWet", (double) chorusWetParam->get());
@@ -420,7 +437,6 @@ void WayloPianoAudioProcessor::setStateInformation (const void* data, int sizeIn
     setPatch ((Patch) xml->getIntAttribute ("patch", 0));
     *outputGainParam = (float) xml->getDoubleAttribute ("outputGain", outputGainParam->get());
     *nativeDelayParam = (float) xml->getDoubleAttribute ("nativeDelay", nativeDelayParam->get());
-    *toneParam = (float) xml->getDoubleAttribute ("tone", toneParam->get());
     *tremoloPanParam = (float) xml->getDoubleAttribute ("tremoloPan", tremoloPanParam->get());
     *overdriveParam = xml->getBoolAttribute ("overdrive", overdriveParam->get());
     *chorusWetParam = (float) xml->getDoubleAttribute ("chorusWet", chorusWetParam->get());
